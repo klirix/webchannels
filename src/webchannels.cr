@@ -1,65 +1,107 @@
 require "http"
 require "json"
+require "colorize"
 
 struct Message
   include JSON::Serializable
 
-  property command : String?
-  property channel : String?
-  property body : String?
+  property event : String
+  property channel : String
+  property data : String
 end
 
-class WebChannel
-  property sockets = [] of HTTP::WebSocket
+abstract class WebChannel
+  @@sockets : Set(self) = Set(self).new
+  @@topic_sockets = {} of String => Set(self)
+  property socket : HTTP::WebSocket
+  property topics = [] of String
 
-  def initialize(@topic : String)
+  def fanout(data : String | Bytes)
+    @@sockets.each &.send(data)
+    print "Fanout #{data} to everyone"
   end
 
-  def fanout(obj)
-    @sockets.each do |socket|
-      socket.send(obj.to_json)
+  def self.broadcast(topic, data)
+    @@topic_sockets[topic].each &.send(data)
+  end
+
+  def broadcast(topic, data)
+    @@topic_sockets[topic].each &.send(data)
+  end
+
+  def on_message(data : String, socket : HTTP::WebSocket)
+  end
+
+  def on_subscribe(data)
+  end
+
+  def subscribe(topic : String)
+    topics << topics
+    @@topic_sockets[topic] << self
+    puts "Socket #{@socket.object_id} subscribed to #{topic}"
+  end
+
+  def unsubscribe(topic : String)
+    topics.delete topic
+    @@topic_sockets[topic].delete self
+    puts "Socket #{@socket.object_id} unsubscribed from #{topic}"
+  end
+
+  def initialize(@socket)
+    puts "Socket #{@socket.object_id} connected to #{self.class.name}"
+    @socket.on_message do |s|
+      on_message s, @socket
     end
+    @@sockets << self
   end
 
-  def matches?(topic : String | Nil)
-    # TODO(klirix): Allow for more complex matching strategies, which should allow for wildcard channelss
-    @topic == topic
-  end
-
-  def subscribe(socket : HTTP::WebSocket)
-    self << socket
-    print("subscribed to topic #{@topic}: ", socket)
-  end
-
-  def <<(socket : HTTP::WebSocket)
-    @sockets << socket
+  def send(data : String | Bytes)
+    @socket.send(data)
   end
 end
 
-room1 = WebChannel.new "room1"
-room2 = WebChannel.new "room2"
+class Manifold
+  @@channels = [] of Tuple(String, WebChannel.class)
 
-channels = [room1, room2]
+  macro channel(channel, channel_class)
+    @@channels << { {{channel}} , {{channel_class}} }
+  end
 
-sockethandler = HTTP::WebSocketHandler.new do |socket, ctx|
-  socket.on_message do |data|
-    message = Message.from_json data
-    case message.command
-    when "subscribe"
-      if ch = channels.find {|ch| ch.matches? message.channel}
-        ch.subscribe(socket)
-        socket.send("ok")
+  def self.handler() : HTTP::WebSocket, HTTP::Server::Context ->
+    Proc(HTTP::WebSocket, HTTP::Server::Context, Void).new do |socket, ctx|
+      socket.on_message do |data|
+        msg = Message.from_json data
+        case msg.event
+        when "subscribe"
+          if pair = @@channels.find {|x| x[0] == msg.channel}
+            klass = pair[1]
+            klass.new(socket)
+            socket.send("ok")
+          end
+        else
+          puts "Weird command lmao"
+        end
+      rescue ex : JSON::ParseException
+        socket.send({error: "Failed to parse JSON"}.to_json)
+        puts "error parsing message"
+      rescue
+        puts "unexpected error"
       end
-    else
-      puts "Weird command lmao"
     end
-  rescue ex : JSON::ParseException
-    socket.send({error: "Filed to parse JSON"}.to_json)
-    puts "error parsing message"
-  rescue
-    puts "unexpected error"
   end
 end
+
+class EchoChannel < WebChannel
+  def on_message(data, socket)
+    fanout(data)
+  end
+end
+
+class MyManifold < Manifold
+  channel "echo", EchoChannel
+end
+
+sockethandler = HTTP::WebSocketHandler.new &MyManifold.handler
 
 server = HTTP::Server.new([sockethandler])
 
