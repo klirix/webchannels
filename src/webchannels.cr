@@ -1,6 +1,5 @@
 require "http"
 require "json"
-require "colorize"
 
 module WebChannels
   struct Message

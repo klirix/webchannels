@@ -60,6 +60,8 @@ A lot of things are to be completed.
 
 TODO:
 
+Authorization via on subscribe and authentication via data passed on channel joining or http context
+
 Passing data to WebChannels via structs not strings. Find a way for better communication.
 
 Decouple connection and channel to simplify logic and naming.
