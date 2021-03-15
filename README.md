@@ -1,6 +1,10 @@
 # webchannels
 
-TODO: Write a description here
+This is an experimental package, things can and _**will**_ change.
+
+Basically soft-realtime channels powered by WebSockets for Crystal.
+
+Heavily inspired by ActionCable and Phoenix Channels
 
 ## Installation
 
@@ -18,13 +22,57 @@ TODO: Write a description here
 
 ```crystal
 require "webchannels"
+
+class Echoes < WebChannels:: WebChannel
+  def on_data(context, data)
+    Echoes.fanout(data)
+  end
+end
+
+class MyManifold < WebChannels::Manifold
+  channel "echo", Echoes
+end
 ```
 
-TODO: Write usage instructions here
+with `http`:
+```crystal
+require "http"
+
+server = HTTP::Server.new([
+  HTTP::WebsocketHandler.new &MyManifold.handler
+])
+
+server.listen 8080
+```
+
+with `kemal`:
+```crystal
+require "kemal"
+
+ws "/echo", &MyManifold.handler
+
+Kemal.run
+```
 
 ## Development
 
-TODO: Write development instructions here
+A lot of things are to be completed.
+
+TODO:
+
+Passing data to WebChannels via structs not strings. Find a way for better communication.
+
+Decouple connection and channel to simplify logic and naming.
+
+Stabilize and standardize protocol and think of a better name for the library
+
+add topic subscription data processing.
+
+as in 
+
+```ruby
+subscribe "news" { |data| process(data) }
+```
 
 ## Contributing
 
