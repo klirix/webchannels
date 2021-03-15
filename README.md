@@ -23,7 +23,7 @@ Heavily inspired by ActionCable and Phoenix Channels
 ```crystal
 require "webchannels"
 
-class Echoes < WebChannels:: WebChannel
+class Echoes < WebChannels::WebChannel
   def on_data(context, data)
     Echoes.fanout(data)
   end
