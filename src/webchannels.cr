@@ -16,9 +16,10 @@ module WebChannels
     @@topic_sockets = {} of String => Set(self)
     property socket : HTTP::WebSocket
     property topics = [] of String
+    @ctx : HTTP::Server::Context
 
     def self.leave(socket : HTTP::WebSocket)
-      channel = chan_by_socket(socket)
+      channel = chan_by_socket!(socket)
       channel.on_leave(socket)
       channel.topics.each do |topic|
         @@topic_sockets[topic].delete channel
@@ -27,17 +28,21 @@ module WebChannels
     end
 
     def self.pass_data(socket, data)
-      channel = chan_by_socket(socket)
+      channel = chan_by_socket!(socket)
       channel.on_message(socket, data)
     end
 
-    private def self.chan_by_socket(socket : HTTP::WebSocket)
-      @@sockets.find {|x| x.socket == socket}.not_nil!
+    def self.chan_by_socket(socket : HTTP::WebSocket)
+      @@sockets.find {|x| x.socket == socket}
     end
 
-    def fanout(data : String | Bytes)
+    def self.chan_by_socket!(socket)
+      self.chan_by_socket(socket).not_nil!
+    end
+
+    def self.fanout(data : String | Bytes)
       @@sockets.each &.send(data)
-      print "Fanout #{data} to everyone"
+      puts "Fanout #{data} to everyone"
     end
 
     def self.broadcast(topic, data)
@@ -72,10 +77,7 @@ module WebChannels
       puts "Socket #{@socket.object_id} unsubscribed from #{topic}"
     end
 
-    def initialize(@socket)
-      new @socket, ""
-    end
-    def initialize(@socket, data : String, @ctx : HTTP::Server::Context)
+    def initialize(@socket, data : String, @ctx)
       @@sockets << self
       on_join(@socket, data)
     end
@@ -105,9 +107,19 @@ module WebChannels
           if channel = channel_by_name? msg.channel
             case msg.event
             when "join"
-              channel.new(socket, msg.data, ctx)
+              unless channel.chan_by_socket socket
+                channel.new(socket, msg.data, ctx)
+                socket.send({event: "joined", channel: msg.channel}.to_json)
+              else
+                socket.send({event: "error", channel: msg.channel, data: "Already joined"}.to_json)
+              end
             when "leave"
-              channel.leave(socket)
+              if channel.chan_by_socket socket
+                channel.leave(socket)
+                socket.send({event: "left", channel: msg.channel}.to_json)
+              else
+                socket.send({event: "error", channel: msg.channel, data: "Can't leave channel"}.to_json)
+              end
             when "data"
               channel.pass_data(socket, msg.data)
             else
@@ -117,8 +129,8 @@ module WebChannels
         rescue ex : JSON::ParseException
           socket.send({error: "Failed to parse JSON"}.to_json)
           puts "error parsing message"
-        rescue
-          puts "unexpected error"
+        # rescue
+        #   puts "unexpected error"
         end
       end
     end
