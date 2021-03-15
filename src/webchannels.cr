@@ -125,6 +125,8 @@ module WebChannels
             else
               puts "Weird command lmao"
             end
+          else
+            socket.send({event: "error", channel: msg.channel, data: "Channel doesn't exist"}.to_json)
           end
         rescue ex : JSON::ParseException
           socket.send({error: "Failed to parse JSON"}.to_json)
