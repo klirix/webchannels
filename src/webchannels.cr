@@ -17,6 +17,12 @@ module WebChannels
     property topics = [] of String
     @ctx : HTTP::Server::Context
 
+    def self.join(socket, data, ctx)
+      unless self.chan_by_socket(socket)
+        @@sockets << new(socket, data, ctx)
+      end
+    end
+
     def self.leave(socket : HTTP::WebSocket)
       channel = chan_by_socket!(socket)
       channel.on_leave(socket)
@@ -48,22 +54,6 @@ module WebChannels
       @@topic_sockets[topic].each &.send(data)
     end
 
-    def broadcast(topic, data)
-      @@topic_sockets[topic].each &.send(data)
-    end
-
-    # Override me
-    def on_message(data : String, socket : HTTP::WebSocket)
-    end
-
-    # Override me
-    def on_leave(socket : HTTP::WebSocket)
-    end
-
-    # Override me
-    def on_join(socket : HTTP::WebSocket, data : String)
-    end
-
     def subscribe(topic : String)
       topics << topic
       @@topic_sockets[topic] << self
@@ -77,12 +67,27 @@ module WebChannels
     end
 
     def initialize(@socket, data : String, @ctx)
-      @@sockets << self
       on_join(@socket, data)
     end
 
     def send(data : String | Bytes)
       @socket.send(data)
+    end
+
+    def broadcast(topic, data)
+      self.broadcast(topic, data)
+    end
+
+    # Override me
+    def on_message(data : String, socket : HTTP::WebSocket)
+    end
+
+    # Override me
+    def on_leave(socket : HTTP::WebSocket)
+    end
+
+    # Override me
+    def on_join(socket : HTTP::WebSocket, data : String)
     end
   end
 
@@ -107,7 +112,7 @@ module WebChannels
             case msg.event
             when "join"
               unless channel.chan_by_socket socket
-                channel.new(socket, msg.data, ctx)
+                channel.join(socket, msg.data, ctx)
                 socket.send({event: "joined", channel: msg.channel}.to_json)
               else
                 socket.send({event: "error", channel: msg.channel, data: "Already joined"}.to_json)
