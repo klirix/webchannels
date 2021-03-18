@@ -1,16 +1,23 @@
 require "../src/webchannels"
 
 class EchoChannel < WebChannels::WebChannel
+
+  @user : Int64?
+
+  def authorize(socket, data, ctx)
+    @user = socket.object_id
+  end
+
   def on_message(socket, data)
     EchoChannel.fanout(data)
   end
 
   def on_join(socket, _data)
-    puts "socket:#{socket.object_id} joined the echo party!!!"
+    puts "socket:#{@user} joined the echo party!!!"
   end
 
   def on_leave(socket)
-    puts "socket:#{socket.object_id} left the echo party :("
+    puts "socket:#{@user} left the echo party :("
   end
 end
 

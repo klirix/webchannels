@@ -18,9 +18,13 @@ module WebChannels
     @ctx : HTTP::Server::Context
 
     def self.join(socket, data, ctx)
+      self.authorize(socket, data, ctx) if self.responds_to?(:authorize)
       unless self.chan_by_socket(socket)
         @@sockets << new(socket, data, ctx)
       end
+    rescue
+      socket.send({event: "error", data: "unauthorized" }.to_json)
+      socket.close()
     end
 
     def self.leave(socket : HTTP::WebSocket)
