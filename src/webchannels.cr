@@ -11,38 +11,41 @@ module WebChannels
   end
 
   abstract class WebChannel
-    @@sockets : Set(self) = Set(self).new
+    @@sockets = {} of HTTP::WebSocket => self
     @@topic_sockets = {} of String => Set(self)
     property socket : HTTP::WebSocket
     property topics = [] of String
     @ctx : HTTP::Server::Context
 
-    def self.join(socket, data, ctx)
-      self.authorize(socket, data, ctx) if self.responds_to?(:authorize)
+    def self.join(socket, data, ctx) : Bool
+      self.authenticate(socket, data, ctx)
       unless self.chan_by_socket(socket)
-        @@sockets << new(socket, data, ctx)
+        @@sockets[socket] = new(socket, data, ctx)
+        true
+      else
+        false
       end
-    rescue
-      socket.send({event: "error", data: "unauthorized" }.to_json)
-      socket.close()
+    rescue e : Exception
+      socket.send({event: "error", data: e.message || "unauthorized" }.to_json)
+      false
     end
 
     def self.leave(socket : HTTP::WebSocket)
       channel = chan_by_socket!(socket)
-      channel.on_leave(socket)
+      channel.on_leave()
       channel.topics.each do |topic|
         @@topic_sockets[topic].delete channel
       end
-      @@sockets.delete channel
+      @@sockets.delete(socket)
     end
 
     def self.pass_data(socket, data)
-      channel = chan_by_socket!(socket)
-      channel.on_message(socket, data)
+      chan_by_socket!(socket)
+        .on_message(data)
     end
 
     def self.chan_by_socket(socket : HTTP::WebSocket)
-      @@sockets.find {|x| x.socket == socket}
+      @@sockets[socket]?
     end
 
     def self.chan_by_socket!(socket)
@@ -50,7 +53,7 @@ module WebChannels
     end
 
     def self.fanout(data : String | Bytes)
-      @@sockets.each &.send(data)
+      @@sockets.each_value &.send(data)
       puts "Fanout #{data} to everyone"
     end
 
@@ -71,7 +74,8 @@ module WebChannels
     end
 
     def initialize(@socket, data : String, @ctx)
-      on_join(@socket, data)
+      authorize(data)
+      on_join(data)
     end
 
     def send(data : String | Bytes)
@@ -83,41 +87,53 @@ module WebChannels
     end
 
     # Override me
-    def on_message(data : String, socket : HTTP::WebSocket)
+    def self.authenticate(socket, data, ctx)
     end
 
     # Override me
-    def on_leave(socket : HTTP::WebSocket)
+    def on_message(data : String)
     end
 
     # Override me
-    def on_join(socket : HTTP::WebSocket, data : String)
+    def authorize(data)
+    end
+
+    # Override me
+    def on_leave()
+    end
+
+    # Override me
+    def on_join(data : String)
     end
   end
 
   class Manifold
-    @@channels = [] of Tuple(String, WebChannel.class)
+    @@channels = {} of String => WebChannel.class
 
     macro channel(channel, channel_class)
-      @@channels << { {{channel}} , {{channel_class}} }
+      @@channels[{{channel}}] = {{channel_class}}
     end
 
     private def self.channel_by_name?(name : String)
-      if pair = @@channels.find {|x| x[0] == name}
-        pair[1]
-      end
+      @@channels[name]?
     end
 
     def self.handler : HTTP::WebSocket, HTTP::Server::Context ->
       Proc(HTTP::WebSocket, HTTP::Server::Context, Void).new do |socket, ctx|
+        socket.on_close do
+          @@channels.each_value do |ch|
+            ch.leave(socket)
+          end
+        end
         socket.on_message do |data|
           msg = Message.from_json data
           if channel = channel_by_name? msg.channel
             case msg.event
             when "join"
               unless channel.chan_by_socket socket
-                channel.join(socket, msg.data, ctx)
-                socket.send({event: "joined", channel: msg.channel}.to_json)
+                if channel.join(socket, msg.data, ctx)
+                  socket.send({event: "joined", channel: msg.channel}.to_json)
+                end
               else
                 socket.send({event: "error", channel: msg.channel, data: "Already joined"}.to_json)
               end
