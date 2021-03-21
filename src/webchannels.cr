@@ -95,11 +95,11 @@ module WebChannels
     end
 
     # Override me
-    def authorize(data)
+    def authorize(data : String)
     end
 
     # Override me
-    def on_leave()
+    def on_leave
     end
 
     # Override me

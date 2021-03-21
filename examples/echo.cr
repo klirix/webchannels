@@ -10,7 +10,7 @@ class EchoChannel < WebChannels::WebChannel
     puts "socket:#{@socket.object_id} joined the echo party!!!"
   end
 
-  def on_leave()
+  def on_leave
     puts "socket:#{@socket.object_id} left the echo party :("
   end
 end
