@@ -1,5 +1,5 @@
 require "spec"
-require "../src/pubsub/*"
+require "../src/pubsub"
 
 class Publisher
   include PubSub(String)
