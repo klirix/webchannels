@@ -1,15 +1,15 @@
 # This is public interface to communicate with a pubsub process
 # All of innerworkings related to actually working with containers are encapsulated and are only executed in one fiber making this fiber an eventbus, making it effectively threadsafe
-module PubSub(Data)
+class PubSub(T)
 
   # :nodoc:
-  record SubscriptionMessage(Data), topic : String, channel : Channel(Data)
+  record SubscriptionMessage(T), topic : String, channel : Channel(T)
 
   # :nodoc:
-  record UnsubscriptionMessage(Data), topic : String, channel : Channel(Data)
+  record UnsubscriptionMessage(T), topic : String, channel : Channel(T)
 
   # :nodoc:
-  record DataMessage(Data), topic : String?, data : Data
+  record DataMessage(T), topic : String?, data : T
 
 
   # :nodoc:
@@ -39,33 +39,33 @@ module PubSub(Data)
   end
 
   # Subscribes a channel to a topic
-  def subscribe(topic : String, channel : Channel(Data))
+  def subscribe(topic : String, channel : Channel(T))
     @channel.send(SubscriptionMessage.new(topic, channel))
   end
 
   # Unsubsribes a channel to a topic
-  def unsubscribe(topic : String, channel : Channel(Data))
+  def unsubscribe(topic : String, channel : Channel(T))
     @channel.send(UnsubscriptionMessage.new(topic, channel))
   end
 
   # Publishes data to a topic
-  def publish(topic : String, data : Data)
+  def publish(topic : String, data : T)
     @channel.send(DataMessage.new(topic, data))
   end
 
   # Broadcasts data to all subscribers
-  def broadcast(data : Data)
+  def broadcast(data : T)
     @channel.send(DataMessage.new(nil, data))
   end
 
-  @clients = {} of Channel(Data) => Set(String)
-  @subscriptions = {} of String => Set(Channel(Data))
-  @channel = Channel(SubscriptionMessage(Data) | UnsubscriptionMessage(Data) | DataMessage(Data)).new
+  @clients = {} of Channel(T) => Set(String)
+  @subscriptions = {} of String => Set(Channel(T))
+  @channel = Channel(SubscriptionMessage(T) | UnsubscriptionMessage(T) | DataMessage(T)).new
 
   # :nodoc:
-  def subscribe_impl(topic : String, channel : Channel(Data))
+  private def subscribe_impl(topic : String, channel : Channel(T))
     unless @subscriptions[topic]?
-      @subscriptions[topic] = Set(Channel(Data)).new
+      @subscriptions[topic] = Set(Channel(T)).new
     end
     @subscriptions[topic] << channel
     unless @clients[channel]?
@@ -75,7 +75,7 @@ module PubSub(Data)
   end
 
   # :nodoc:
-  def unsubscribe_impl(topic : String, channel : Channel(Data))
+  private def unsubscribe_impl(topic : String, channel : Channel(T))
     if set = @subscriptions[topic]?
       set.delete channel
       @clients[channel].delete topic
@@ -86,14 +86,14 @@ module PubSub(Data)
   end
 
   # :nodoc:
-  def publish_impl(topic : String, data : Data)
+  private def publish_impl(topic : String, data : T)
     if set = @subscriptions[topic]?
       set.each &.send(data)
     end
   end
 
   # :nodoc:
-  def broadcast_impl(data : Data)
+  private def broadcast_impl(data : T)
     @clients.each_key &.send(data)
   end
 end
