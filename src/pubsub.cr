@@ -68,22 +68,20 @@ class PubSub(T)
     @channel.send(DataMessage.new(nil, data))
   end
 
-  @clients = {} of Channel(T) => Set(String)
+  @clients = {} of Channel(T) => Set(String?)
   @subscriptions = {} of String => Set(Channel(T))
   @channel = Channel(SubscriptionMessage(T) | UnsubscriptionMessage(T) | DataMessage(T)).new
 
   # :nodoc:
   private def subscribe_impl(topic : String?, channel : Channel(T))
-    unless topic.nil?
-      unless @subscriptions[topic]?
-        @subscriptions[topic] = Set(Channel(T)).new
-      end
-      @subscriptions[topic] << channel
+    unless @subscriptions[topic]?
+      @subscriptions[topic] = Set(Channel(T)).new
     end
+    @subscriptions[topic] << channel
     unless @clients[channel]?
-      @clients[channel] = Set(String).new
+      @clients[channel] = Set(String?).new
     end
-    @clients[channel] << topic unless topic.nil?
+    @clients[channel] << topic
   end
 
   # :nodoc:
@@ -95,7 +93,6 @@ class PubSub(T)
         @clients.delete channel
       end
     end
-    @clients.delete channel if topic.nil?
   end
 
   # :nodoc:
