@@ -39,12 +39,12 @@ class PubSub(T)
   end
 
   # Subscribes a channel to a topic
-  def subscribe(topic : String, channel : Channel(T))
+  def subscribe(topic : String?, channel : Channel(T))
     @channel.send(SubscriptionMessage.new(topic, channel))
   end
 
   # Unsubsribes a channel to a topic
-  def unsubscribe(topic : String, channel : Channel(T))
+  def unsubscribe(topic : String?, channel : Channel(T))
     @channel.send(UnsubscriptionMessage.new(topic, channel))
   end
 
@@ -63,19 +63,21 @@ class PubSub(T)
   @channel = Channel(SubscriptionMessage(T) | UnsubscriptionMessage(T) | DataMessage(T)).new
 
   # :nodoc:
-  private def subscribe_impl(topic : String, channel : Channel(T))
-    unless @subscriptions[topic]?
-      @subscriptions[topic] = Set(Channel(T)).new
+  private def subscribe_impl(topic : String?, channel : Channel(T))
+    unless topic.nil?
+      unless @subscriptions[topic]?
+        @subscriptions[topic] = Set(Channel(T)).new
+      end
+      @subscriptions[topic] << channel
     end
-    @subscriptions[topic] << channel
     unless @clients[channel]?
       @clients[channel] = Set(String).new
     end
-    @clients[channel] << topic
+    @clients[channel] << topic unless topic.nil?
   end
 
   # :nodoc:
-  private def unsubscribe_impl(topic : String, channel : Channel(T))
+  private def unsubscribe_impl(topic : String?, channel : Channel(T))
     if set = @subscriptions[topic]?
       set.delete channel
       @clients[channel].delete topic
@@ -83,6 +85,7 @@ class PubSub(T)
         @clients.delete channel
       end
     end
+    @clients.delete channel if topic.nil?
   end
 
   # :nodoc:
