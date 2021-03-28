@@ -3,47 +3,47 @@ require "json"
 
 require "./pubsub"
 
-class WebChannel(Data) < PubSub({
-    data: Data,
-    topic: String?,
-    id: String
-  })
+record WebChannelMessage(T),
+  data : T,
+  topic : String?,
+  channel : String
+
+abstract class WebChannel(T)
+
+  abstract def on_message(data : T)
+
+  abstract def id : String
 
   def self.make_channel
-    Channel({
-      data: Data,
-      topic: String?,
-      id: String
-    }).new
+    Channel(WebChannelMessage(T)).new
   end
 
-  macro id(name)
-    @id = {{name}}
+  @pubsub = PubSub(WebChannelMessage(T)).new
+
+  def initialize
+    @pubsub.run
   end
 
-  # def publish(topic : String, data : M)
-
-  #   previous_def({
-  #     data: data,
-  #     topic: topic,
-  #     id: @id
-  #   })
-  # end
+  def broadcast(data : T)
+    @pubsub.broadcast(WebChannelMessage.new(
+      data: data, topic: nil, channel: id
+    ))
+  end
 
 end
 
 class EchoChannel < WebChannel(String)
 
-  id "echo"
+  getter id : String = "echo"
 
   def on_message(message)
     puts "broadcasting #{message} to echo"
-    # broadcast(message)
+    broadcast(message)
   end
 
   def join(conn : Connection)
     puts "connection joined #{conn.socket.object_id}"
-    subscribe("echo", conn.channel_notifications)
+    @pubsub.subscribe("echo", conn.channel_notifications)
   end
 
 end
@@ -52,8 +52,6 @@ class Manifold
   class_property channels = {
     "echo" => EchoChannel.new
   }
-
-  @@channels.each_value &.run
 end
 
 class Connection
@@ -81,7 +79,7 @@ class Connection
       puts "Socket #{@socket.object_id} listening for data"
       while notification = @channel_notifications.receive?
         puts " #{@socket.object_id} Received something"
-        @socket.send(notification[:data])
+        @socket.send(notification.data)
       end
     end
   end
