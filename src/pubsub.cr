@@ -38,14 +38,24 @@ class PubSub(T)
     end
   end
 
-  # Subscribes a channel to a topic
+  # Subscribes a channel to a topic, adding it to the pool of channels
   def subscribe(topic : String?, channel : Channel(T))
     @channel.send(SubscriptionMessage.new(topic, channel))
   end
 
-  # Unsubsribes a channel to a topic
+  # Subscribes a channel to the channel without assigning it a topic
+  def subscribe(channel : Channel(T))
+    @channel.send(SubscriptionMessage.new(nil, channel))
+  end
+
+  # Unsubscribes a channel to a topic
   def unsubscribe(topic : String?, channel : Channel(T))
     @channel.send(UnsubscriptionMessage.new(topic, channel))
+  end
+
+  # Removing a channel from the pool of channels
+  def unsubscribe(channel : Channel(T))
+    @channel.send(UnsubscriptionMessage.new(nil, channel))
   end
 
   # Publishes data to a topic
